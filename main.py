@@ -48,9 +48,9 @@ from PyQt4.QtGui import (QLabel, QCompleter, QDirModel, QPushButton, QWidget,
 from PyQt4.QtCore import Qt, QDir
 
 try:
-    from PyKDE4.kdeui import KTextEdit as QPlainTextEdit
+    from PyKDE4.kdeui import KTextEdit as QTextEdit
 except ImportError:
-    from PyQt4.QtGui import QPlainTextEdit  # lint:ok
+    from PyQt4.QtGui import QTextEdit  # lint:ok
 
 from ninja_ide.gui.explorer.explorer_container import ExplorerContainer
 from ninja_ide.core import plugin
@@ -96,8 +96,7 @@ class Main(plugin.Plugin):
 
         self.editor_s = self.locator.get_service('editor')
         # directory auto completer
-        self.completer = QCompleter(self)
-        self.dirs = QDirModel(self)
+        self.completer, self.dirs = QCompleter(self), QDirModel(self)
         self.dirs.setFilter(QDir.AllEntries | QDir.NoDotAndDotDot)
         self.completer.setModel(self.dirs)
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -119,7 +118,7 @@ class Main(plugin.Plugin):
             for e in ['py', 'pyw', 'txt', '*']])))))
         self.inurl = QLineEdit('http://www.')
         self.inurl.setPlaceholderText('http://www.full/url/to/remote/file.html')
-        self.output = QPlainTextEdit()
+        self.output = QTextEdit()
         vboxg0 = QVBoxLayout(self.group0)
         for each_widget in (self.source, self.infile, self.open, self.inurl,
             self.output, ):
@@ -131,7 +130,7 @@ class Main(plugin.Plugin):
         self.group1.setCheckable(True)
         self.group1.setGraphicsEffect(QGraphicsBlurEffect(self))
         self.group1.graphicsEffect().setEnabled(False)
-        self.group1.toggled.connect(self.toggle_css_group)
+        self.group1.toggled.connect(self.toggle_gral_group)
         self.ckgrl1 = QCheckBox('Create standalone executable')
         self.ckgrl2 = QCheckBox('Use debug version')
         self.ckgrl3 = QCheckBox('Force compilation for MS Windows')
@@ -176,15 +175,9 @@ class Main(plugin.Plugin):
             vboxg2.addWidget(each_widget)
             each_widget.setToolTip(each_widget.text())
 
-        self.group4 = QGroupBox()
+        self.group4, self.dumptree = QGroupBox(), QTextEdit()
         self.group4.setTitle(' Dump of internal tree ')
-        self.ckdmp1 = QCheckBox('Dump the final result of optimization as XML')
-        self.ckdmp2 = QCheckBox('Dump the final result of optimization as TXT')
-        vboxg4 = QVBoxLayout(self.group4)
-        for each_widget in (self.ckdmp1, self.ckdmp2,
-        QLabel('<center><small>Dumping the internal tree cancels Compilation')):
-            vboxg4.addWidget(each_widget)
-            each_widget.setToolTip(each_widget.text())
+        QVBoxLayout(self.group4).addWidget(self.dumptree)
 
         self.group5 = QGroupBox()
         self.group5.setTitle(' Code generation ')
@@ -254,9 +247,9 @@ class Main(plugin.Plugin):
             vboxg9.addWidget(each_widget)
 
         [a.setChecked(True) for a in (self.ckgrl1, self.ckgrl2, self.ckgrl4,
-        self.ckgrl5, self.ckgrl6, self.ckgrl7, self.ckgrl8, self.ckrec1,
-        self.ckexe1, self.ckcgn2, self.ckdbg1, self.ckdbg3, self.ckdbg4,
-        self.ckdbg5, self.cktrc1, self.cktrc2, self.cktrc3, self.ckxtr2)]
+            self.ckgrl5, self.ckgrl6, self.ckgrl7, self.ckgrl8, self.ckrec1,
+            self.ckexe1, self.ckcgn2, self.ckdbg1, self.ckdbg3, self.ckdbg4,
+            self.ckdbg5, self.cktrc1, self.cktrc2, self.cktrc3, self.ckxtr2)]
 
         self.button = QPushButton(QIcon.fromTheme("face-cool"), 'Compile Python')
         self.button.setCursor(QCursor(Qt.PointingHandCursor))
@@ -289,10 +282,9 @@ class Main(plugin.Plugin):
                     vbox.addWidget(each_widget)
 
         tw = TransientWidget((
-            QLabel('<b>Python Code to Binary Executable Compiler'),
-            self.group0, self.group1, self.group2, self.group3, self.group4,
-            self.group5, self.group6, self.group7, self.group8, self.group9,
-            self.button, ))
+            QLabel('<b>Python Code to Binary Executable Compiler'), self.group0,
+            self.group6, self.group1, self.group2, self.group3, self.group4,
+            self.group5, self.group7, self.group8, self.group9, self.button, ))
         self.scrollable = QScrollArea()
         self.scrollable.setWidgetResizable(True)
         self.scrollable.setWidget(tw)
@@ -348,8 +340,8 @@ class Main(plugin.Plugin):
             self.inurl.hide()
             self.output.setText(self.editor_s.get_text())
 
-    def toggle_css_group(self):
-        ' toggle on or off the css checkboxes '
+    def toggle_gral_group(self):
+        ' toggle on or off the checkboxes '
         if self.group1.isChecked() is True:
             [a.setChecked(True) for a in (self.ckgrl1, self.ckgrl2, self.ckgrl4,
             self.ckgrl5, self.ckgrl6, self.ckgrl7, self.ckgrl8)]
