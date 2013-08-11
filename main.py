@@ -17,7 +17,7 @@
 
 
 # metadata
-" Ninja Nuitka "
+" Nuitka Ninja "
 __version__ = ' 0.1 '
 __license__ = ' Apache '
 __author__ = ' juancarlospaco '
@@ -31,21 +31,31 @@ __full_licence__ = ''
 
 
 # imports
-from os import path
+from os import path, linesep, chmod
+from datetime import datetime
 from sip import setapi
-from subprocess import check_output as getoutput
+
+try:
+    from commands import getoutput
+except ImportError:
+    from subprocess import check_output as getoutput  # lint:ok
+
 try:
     from urllib.request import urlopen
 except ImportError:
     from urllib import urlopen  # lint:ok
 
+try:
+    from os import startfile
+except ImportError:
+    from subprocess import Popen
 
 from PyQt4.QtGui import (QLabel, QCompleter, QDirModel, QPushButton, QWidget,
   QFileDialog, QDockWidget, QVBoxLayout, QCursor, QLineEdit, QIcon, QGroupBox,
   QCheckBox, QGraphicsDropShadowEffect, QGraphicsBlurEffect, QColor, QComboBox,
   QApplication, QMessageBox, QScrollArea, QSpinBox)
 
-from PyQt4.QtCore import Qt, QDir
+from PyQt4.QtCore import Qt, QDir, QProcess
 
 try:
     from PyKDE4.kdeui import KTextEdit as QTextEdit
@@ -68,7 +78,7 @@ Nuitka is a replacement for the Python interpreter and compiles every construct
 of CPython 2 and 3. It translates Python to C++.
 <br><br>
 258% speed performance increase for the PyStone benchmark. <br>
-Stable Nuitka is fully supported, if you find a Bug, it will be fixed.
+Stable Nuitka fully supported, if you Report a Bug, it will be fixed.
 <br><br>
 Nuitka Stable and Develop Packages are available for Ubuntu, Debian, Arch,
 OpenSuse, Fedora, CentOS, Red Hat, Generic Linux and MS Windows.
@@ -93,7 +103,11 @@ class Main(plugin.Plugin):
         " Init Main Class "
         ec = ExplorerContainer()
         super(Main, self).initialize(*args, **kwargs)
-
+        self.process = QProcess()
+        self.process.readyReadStandardOutput.connect(self.readOutput)
+        self.process.readyReadStandardError.connect(self.readErrors)
+        self.process.finished.connect(self._process_finished)
+        self.process.error.connect(self._process_finished)
         self.editor_s = self.locator.get_service('editor')
         # directory auto completer
         self.completer, self.dirs = QCompleter(self), QDirModel(self)
@@ -105,7 +119,8 @@ class Main(plugin.Plugin):
         self.group0 = QGroupBox()
         self.group0.setTitle(' Source ')
         self.source = QComboBox()
-        self.source.addItems(['Clipboard', 'Local File', 'Remote URL', 'Ninja'])
+        self.source.addItems(['Local File', 'Ninja'])
+        self.source.setDisabled(True)  # FIXME this is temporaly disabled
         self.source.currentIndexChanged.connect(self.on_source_changed)
         self.infile = QLineEdit(path.expanduser("~"))
         self.infile.setPlaceholderText(' /full/path/to/file.html ')
@@ -116,14 +131,10 @@ class Main(plugin.Plugin):
             QFileDialog.getOpenFileName(self.dock, "Open a File to read from",
             path.expanduser("~"), ';;'.join(['{}(*.{})'.format(e.upper(), e)
             for e in ['py', 'pyw', 'txt', '*']])))))
-        self.inurl = QLineEdit('http://www.')
-        self.inurl.setPlaceholderText('http://www.full/url/to/remote/file.html')
         self.output = QTextEdit()
         vboxg0 = QVBoxLayout(self.group0)
-        for each_widget in (self.source, self.infile, self.open, self.inurl,
-            self.output, ):
+        for each_widget in (self.source, self.infile, self.open, self.output):
             vboxg0.addWidget(each_widget)
-        [a.hide() for a in iter((self.infile, self.open, self.inurl))]
 
         self.group1 = QGroupBox()
         self.group1.setTitle(' General ')
@@ -132,7 +143,7 @@ class Main(plugin.Plugin):
         self.group1.graphicsEffect().setEnabled(False)
         self.group1.toggled.connect(self.toggle_gral_group)
         self.ckgrl1 = QCheckBox('Create standalone executable')
-        self.ckgrl2 = QCheckBox('Use debug version')
+        self.ckgrl2 = QCheckBox('Use Python debug')
         self.ckgrl3 = QCheckBox('Force compilation for MS Windows')
         self.ckgrl4 = QCheckBox('When compiling, disable the console window')
         self.ckgrl5 = QCheckBox('Use link time optimizations if available')
@@ -230,47 +241,62 @@ class Main(plugin.Plugin):
 
         self.group9 = QGroupBox()
         self.group9.setTitle(' Extras ')
+        self.group9.setCheckable(True)
+        self.group9.toggled.connect(self.group9.hide)
         self.nice = QSpinBox()
         self.nice.setValue(20)
         self.nice.setMaximum(20)
         self.nice.setMinimum(0)
         self.ckxtr1 = QCheckBox('Open Target Directory later')
         self.ckxtr2 = QCheckBox('Save a LOG file to target later')
+        self.ckxtr3 = QCheckBox('Save SH Bash script to reproduce Nuitka build')
         try:
             self.vinfo = QLabel('<center> <b> Nuitka Backend Version: </b>' +
-                            getoutput('nuitka --version', shell=True).strip())
+                            getoutput('nuitka --version',).strip())
         except:
             self.vinfo = QLabel('<b>Warning: Failed to query Nuitka Backend!')
         vboxg9 = QVBoxLayout(self.group9)
         for each_widget in (QLabel('Backend CPU Priority'), self.nice,
-                            self.ckxtr1, self.ckxtr2, self.vinfo):
+                            self.ckxtr1, self.ckxtr2, self.ckxtr3, self.vinfo):
             vboxg9.addWidget(each_widget)
 
-        [a.setChecked(True) for a in (self.ckgrl1, self.ckgrl2, self.ckgrl4,
-            self.ckgrl5, self.ckgrl6, self.ckgrl7, self.ckgrl8, self.ckrec1,
-            self.ckexe1, self.ckcgn2, self.ckdbg1, self.ckdbg3, self.ckdbg4,
-            self.ckdbg5, self.cktrc1, self.cktrc2, self.cktrc3, self.ckxtr2)]
+        self.group10 = QGroupBox()
+        self.group10.setTitle(' Documentation ')
+        self.group10.setCheckable(True)
+        self.group10.toggled.connect(self.group10.hide)
+        vboxg10 = QVBoxLayout(self.group10)
+        for each_widget in (QLabel('''<a href=
+            "file:///usr/share/doc/nuitka/README.pdf.gz">
+            <small><center> Nuitka User Documentation Local PDF </a>'''),
+            QLabel('''<a href=
+            "file:///usr/share/doc/nuitka/Developer_Manual.pdf.gz">
+            <small><center> Nuitka Developer Documentation Local PDF </a>'''),
+            QLabel('''<a href="http://nuitka.net/doc/user-manual.html">
+            <small><center> Nuitka User Documentation On Line HTML </a>'''),
+            QLabel('''<a href="http://nuitka.net/doc/developer-manual.html">
+            <small><center> Nuitka Developer Documentation On Line HTML </a>''')
+             ):
+            vboxg10.addWidget(each_widget)
+            each_widget.setOpenExternalLinks(True)
+            each_widget.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
 
-        self.button = QPushButton(QIcon.fromTheme("face-cool"), 'Compile Python')
+        [a.setChecked(True) for a in (self.ckgrl1, self.ckgrl2, self.ckgrl4,
+            self.ckgrl5, self.ckgrl6, self.ckgrl7, self.ckgrl8, self.ckrec0,
+            self.ckrec1, self.ckrec2, self.ckexe1, self.ckcgn2, self.ckdbg1,
+            self.ckdbg3, self.ckdbg4, self.ckdbg5, self.cktrc1, self.cktrc2,
+            self.cktrc3, self.ckxtr1, self.ckxtr2, self.ckxtr3,)]
+
+        self.button = QPushButton(QIcon.fromTheme("face-cool"),
+                                  'Compile Python')
         self.button.setCursor(QCursor(Qt.PointingHandCursor))
         self.button.setMinimumSize(100, 50)
         self.button.clicked.connect(self.run)
-
-        def must_glow(widget_list):
-            ' apply an glow effect to the widget '
-            for glow, each_widget in enumerate(widget_list):
-                try:
-                    if each_widget.graphicsEffect() is None:
-                        glow = QGraphicsDropShadowEffect(self)
-                        glow.setOffset(0)
-                        glow.setBlurRadius(99)
-                        glow.setColor(QColor(99, 255, 255))
-                        each_widget.setGraphicsEffect(glow)
-                        glow.setEnabled(True)
-                except:
-                    pass
-
-        must_glow((self.button, ))
+        glow = QGraphicsDropShadowEffect(self)
+        glow.setOffset(0)
+        glow.setBlurRadius(99)
+        glow.setColor(QColor(99, 255, 255))
+        self.button.setGraphicsEffect(glow)
+        glow.setEnabled(True)
 
         class TransientWidget(QWidget):
             ' persistant widget thingy '
@@ -284,14 +310,13 @@ class Main(plugin.Plugin):
         tw = TransientWidget((
             QLabel('<b>Python Code to Binary Executable Compiler'), self.group0,
             self.group6, self.group1, self.group2, self.group3, self.group4,
-            self.group5, self.group7, self.group8, self.group9, self.button, ))
-        self.scrollable = QScrollArea()
+            self.group5, self.group7, self.group8, self.group9, self.group10,
+            self.button, ))
+        self.scrollable, self.dock = QScrollArea(), QDockWidget()
         self.scrollable.setWidgetResizable(True)
         self.scrollable.setWidget(tw)
-        self.dock = QDockWidget()
         self.dock.setWindowTitle(__doc__)
         self.dock.setStyleSheet('QDockWidget::title{text-align: center;}')
-        self.dock.setMinimumWidth(350)
         self.dock.setWidget(self.scrollable)
         ec.addTab(self.dock, "Nuitka")
         QPushButton(QIcon.fromTheme("help-about"), 'About', self.dock
@@ -299,18 +324,108 @@ class Main(plugin.Plugin):
             HELPMSG))
 
     def run(self):
-        ' run the string replacing '
+        ' run the compile '
         if self.source.currentText() == 'Local File':
-            with open(path.abspath(str(self.infile.text()).strip()), 'r') as f:
-                txt = f.read()
-        elif self.source.currentText() == 'Remote URL':
-            txt = urlopen(str(self.inurl.text()).strip()).read()
-        elif  self.source.currentText() == 'Clipboard':
-            txt = str(self.output.toPlainText()) if str(self.output.toPlainText()) is not '' else str(QApplication.clipboard().text())
+            target = path.abspath(str(self.infile.text()).strip())
         else:
-            txt = self.editor_s.get_text()
+            target = self.editor_s.get_text()
+        self.button.setDisabled(True)
         self.output.clear()
-        txt = txt.lower() if self.chdmp1.isChecked() is True else txt
+        self.output.show()
+        self.output.setFocus()
+        self.output.append(self.formatInfoMsg('INFO:{}'.format(datetime.now())))
+        self.output.append(self.formatInfoMsg(' INFO: Dumping Internal Tree'))
+        try:
+            self.dumptree.setPlainText(
+                getoutput('nuitka --dump-tree {}'.format(target)))
+            self.dumptree.setMinimumSize(100, 500)
+        except:
+            self.output.append(self.formatErrorMsg('ERROR:FAIL: Internal Tree'))
+        self.output.append(self.formatInfoMsg(' INFO: OK: Parsing Arguments'))
+        cmd = ' '.join(('nice --adjustment={} nuitka'.format(self.nice.value()),
+
+            # output
+            '--remove-output' if self.ckcgn2.isChecked() is True else '',
+
+            # general
+            '--exe' if self.ckgrl1.isChecked() is True else '',
+            '--python-debug' if self.ckgrl2.isChecked() is True else '',
+            '--verbose' if self.cktrc3.isChecked() is True else '',
+            '--windows-target' if self.ckgrl3.isChecked() is True else '',
+            '--windows-disable-console' if self.ckgrl4.isChecked() is True else '',
+            '--lto' if self.ckgrl5.isChecked() is True else '',
+            '--clang' if self.ckgrl6.isChecked() is True else '',
+            '--improved' if self.ckgrl7.isChecked() is True else '',
+            '--warn-implicit-exceptions' if self.ckgrl8.isChecked() is True else '',
+
+            # recursion control
+            '--recurse-stdlib' if self.ckrec0.isChecked() is True else '',
+            '--recurse-none' if self.ckrec1.isChecked() is True else '',
+            '--recurse-all' if self.ckrec2.isChecked() is True else '',
+
+            # execution after compilation
+            '--execute' if self.ckexe0.isChecked() is True else '',
+            '--keep-pythonpath' if self.ckexe1.isChecked() is True else '',
+
+            # code generation
+            '--code-gen-no-statement-lines' if self.chdmp1.isChecked() is True else '',
+            '--no-optimization' if self.chdmp2.isChecked() is True else '',
+
+            # debug
+            '--debug' if self.ckdbg1.isChecked() is True else '',
+            '--unstripped' if self.ckdbg2.isChecked() is True else '',
+            '--trace-execution' if self.ckdbg3.isChecked() is True else '',
+            '--c++-only' if self.ckdbg4.isChecked() is True else '',
+            '--experimental' if self.ckdbg5.isChecked() is True else '',
+
+            # tracing
+            '--show-scons' if self.cktrc1.isChecked() is True else '',
+            '--show-progress' if self.cktrc2.isChecked() is True else '',
+            '--verbose' if self.cktrc3.isChecked() is True else '',
+
+            # non boolean parametrization
+            '--python-version={}'.format(self.pyver.currentText()),
+            '--jobs={}'.format(self.jobs.value()),
+            '--output-dir="{}"'.format(self.outdir.text()),
+            target,
+        ))
+        self.output.append(self.formatInfoMsg(' INFO: Command: {}'.format(cmd)))
+        self.output.append(self.formatInfoMsg(' INFO: OK: Starting to Compile'))
+        self.process.start(cmd)
+        if not self.process.waitForStarted():
+            self.output.append(self.formatErrorMsg('ERROR: FAIL: Compile Fail'))
+            self.output.append(self.formatErrorMsg('ERROR:FAIL:{}'.format(cmd)))
+            self.button.setEnabled(True)
+            return
+        # write a .sh bash script file on target
+        if self.ckxtr3.isChecked() is True:
+            sh_file = 'nuitka_compile_python_to_cpp.sh'
+            with open(path.join(str(self.outdir.text()), sh_file), 'w') as _sh:
+                self.output.append(self.formatInfoMsg('''INFO: OK: Writing Bash:
+                    {}'''.format(sh_file)))
+                _sh.write('#!/usr/bin/env bash {}{}'.format(linesep, cmd))
+                _sh.close()
+            self.output.append(self.formatInfoMsg('INFO: OK: Bash chmod: 775'))
+            try:
+                chmod(path.join(str(self.outdir.text()), sh_file), 0775)  # Py2
+            except:
+                chmod(path.join(str(self.outdir.text()), sh_file), 0o775)  # Py3
+
+    def _process_finished(self):
+        """sphinx-build finished sucessfully"""
+        self.output.append(self.formatInfoMsg('INFO:{}'.format(datetime.now())))
+        if self.ckxtr2.isChecked() is True:
+            log_file = 'nuitka_ninja.log'
+            with open(path.join(str(self.outdir.text()), log_file), 'w') as log:
+                self.output.append(self.formatInfoMsg('''INFO: OK: Writing LOG:
+                    {}'''.format(log_file)))
+                log.write(self.output.toPlainText())
+        if self.ckxtr1.isChecked() is True:
+            try:
+                startfile(path.abspath(str(self.outdir.text())))
+            except:
+                Popen(["xdg-open", path.abspath(str(self.outdir.text()))])
+        self.button.setDisabled(False)
         self.output.show()
         self.output.setFocus()
         self.output.selectAll()
@@ -319,26 +434,9 @@ class Main(plugin.Plugin):
         ' do something when the desired source has changed '
         if self.source.currentText() == 'Local File':
             self.open.show()
-            self.infile.show()
-            self.inurl.hide()
-            self.output.hide()
-        elif  self.source.currentText() == 'Remote URL':
-            self.inurl.show()
-            self.open.hide()
-            self.infile.hide()
-            self.output.hide()
-        elif  self.source.currentText() == 'Clipboard':
-            self.output.show()
-            self.open.hide()
-            self.infile.hide()
-            self.inurl.hide()
-            self.output.setText(QApplication.clipboard().text())
         else:
-            self.output.show()
             self.open.hide()
-            self.infile.hide()
-            self.inurl.hide()
-            self.output.setText(self.editor_s.get_text())
+            self.infile.setText(self.editor_s.get_text())
 
     def toggle_gral_group(self):
         ' toggle on or off the checkboxes '
@@ -350,6 +448,27 @@ class Main(plugin.Plugin):
             [a.setChecked(False) for a in (self.ckgrl1, self.ckgrl2,
             self.ckgrl4, self.ckgrl5, self.ckgrl6, self.ckgrl7, self.ckgrl8)]
             self.group1.graphicsEffect().setEnabled(True)
+
+    def readOutput(self):
+        """Read and append sphinx-build output to the logBrowser"""
+        self.output.append(str(self.process.readAllStandardOutput()))
+
+    def readErrors(self):
+        """Read and append sphinx-build errors to the logBrowser"""
+        self.output.append(self.formatErrorMsg(str(
+                                        self.process.readAllStandardError())))
+
+    def formatErrorMsg(self, msg):
+        """Format error messages in red color"""
+        return self.formatMsg(msg, 'red')
+
+    def formatInfoMsg(self, msg):
+        """Format informative messages in blue color"""
+        return self.formatMsg(msg, 'green')
+
+    def formatMsg(self, msg, color):
+        """Format message with the given color"""
+        return '<font color="{}">{}</font>'.format(color, msg)
 
 
 ###############################################################################
