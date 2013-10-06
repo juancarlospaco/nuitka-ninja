@@ -18,12 +18,12 @@
 
 # metadata
 " Nuitka Ninja "
-__version__ = ' 0.1 '
+__version__ = ' 0.4 '
 __license__ = ' Apache '
 __author__ = ' juancarlospaco '
 __email__ = ' juancarlospaco@ubuntu.com '
 __url__ = ''
-__date__ = ' 15/08/2013 '
+__date__ = ' 10/10/2013 '
 __prj__ = ' nuitka '
 __docformat__ = 'html'
 __source__ = ''
@@ -41,11 +41,6 @@ except ImportError:
     from subprocess import check_output as getoutput  # lint:ok
 
 try:
-    from urllib.request import urlopen
-except ImportError:
-    from urllib import urlopen  # lint:ok
-
-try:
     from os import startfile
 except ImportError:
     from subprocess import Popen
@@ -53,7 +48,7 @@ except ImportError:
 from PyQt4.QtGui import (QLabel, QCompleter, QDirModel, QPushButton, QWidget,
   QFileDialog, QDockWidget, QVBoxLayout, QCursor, QLineEdit, QIcon, QGroupBox,
   QCheckBox, QGraphicsDropShadowEffect, QGraphicsBlurEffect, QColor, QComboBox,
-  QApplication, QMessageBox, QScrollArea, QSpinBox)
+  QMessageBox, QScrollArea, QSpinBox)
 
 from PyQt4.QtCore import Qt, QDir, QProcess
 
@@ -101,7 +96,6 @@ class Main(plugin.Plugin):
     " Main Class "
     def initialize(self, *args, **kwargs):
         " Init Main Class "
-        ec = ExplorerContainer()
         super(Main, self).initialize(*args, **kwargs)
         self.process = QProcess()
         self.process.readyReadStandardOutput.connect(self.readOutput)
@@ -109,7 +103,6 @@ class Main(plugin.Plugin):
         self.process.finished.connect(self._process_finished)
         self.process.error.connect(self._process_finished)
         self.editor_s = self.locator.get_service('editor')
-        # directory auto completer
         self.completer, self.dirs = QCompleter(self), QDirModel(self)
         self.dirs.setFilter(QDir.AllEntries | QDir.NoDotAndDotDot)
         self.completer.setModel(self.dirs)
@@ -118,10 +111,6 @@ class Main(plugin.Plugin):
 
         self.group0 = QGroupBox()
         self.group0.setTitle(' Source ')
-        self.source = QComboBox()
-        self.source.addItems(['Local File', 'Ninja'])
-        self.source.setDisabled(True)  # FIXME this is temporaly disabled
-        self.source.currentIndexChanged.connect(self.on_source_changed)
         self.infile = QLineEdit(path.expanduser("~"))
         self.infile.setPlaceholderText(' /full/path/to/file.html ')
         self.infile.setCompleter(self.completer)
@@ -133,7 +122,7 @@ class Main(plugin.Plugin):
             for e in ['py', 'pyw', 'txt', '*']])))))
         self.output = QTextEdit()
         vboxg0 = QVBoxLayout(self.group0)
-        for each_widget in (self.source, self.infile, self.open, self.output):
+        for each_widget in (self.infile, self.open, self.output):
             vboxg0.addWidget(each_widget)
 
         self.group1 = QGroupBox()
@@ -150,9 +139,8 @@ class Main(plugin.Plugin):
         self.ckgrl6 = QCheckBox('Force the use of clang')
         self.ckgrl7 = QCheckBox('Allow minor devitations from Python behaviour')
         self.ckgrl8 = QCheckBox('Warnings implicit exceptions at compile time')
-        self.pyver = QComboBox()
+        self.pyver, self.jobs = QComboBox(), QSpinBox()
         self.pyver.addItems(['2.7', '2.6', '3.2', '3.3'])
-        self.jobs = QSpinBox()
         self.jobs.setValue(1)
         self.jobs.setMaximum(12)
         self.jobs.setMinimum(1)
@@ -296,7 +284,6 @@ class Main(plugin.Plugin):
         glow.setBlurRadius(99)
         glow.setColor(QColor(99, 255, 255))
         self.button.setGraphicsEffect(glow)
-        glow.setEnabled(True)
 
         class TransientWidget(QWidget):
             ' persistant widget thingy '
@@ -318,17 +305,14 @@ class Main(plugin.Plugin):
         self.dock.setWindowTitle(__doc__)
         self.dock.setStyleSheet('QDockWidget::title{text-align: center;}')
         self.dock.setWidget(self.scrollable)
-        ec.addTab(self.dock, "Nuitka")
+        ExplorerContainer().addTab(self.dock, "Nuitka")
         QPushButton(QIcon.fromTheme("help-about"), 'About', self.dock
           ).clicked.connect(lambda: QMessageBox.information(self.dock, __doc__,
             HELPMSG))
 
     def run(self):
         ' run the compile '
-        if self.source.currentText() == 'Local File':
-            target = path.abspath(str(self.infile.text()).strip())
-        else:
-            target = self.editor_s.get_text()
+        target = path.abspath(str(self.infile.text()).strip())
         self.button.setDisabled(True)
         self.output.clear()
         self.output.show()
@@ -387,8 +371,7 @@ class Main(plugin.Plugin):
             '--python-version={}'.format(self.pyver.currentText()),
             '--jobs={}'.format(self.jobs.value()),
             '--output-dir="{}"'.format(self.outdir.text()),
-            target,
-        ))
+            target))
         self.output.append(self.formatInfoMsg(' INFO: Command: {}'.format(cmd)))
         self.output.append(self.formatInfoMsg(' INFO: OK: Starting to Compile'))
         self.process.start(cmd)
@@ -429,14 +412,6 @@ class Main(plugin.Plugin):
         self.output.show()
         self.output.setFocus()
         self.output.selectAll()
-
-    def on_source_changed(self):
-        ' do something when the desired source has changed '
-        if self.source.currentText() == 'Local File':
-            self.open.show()
-        else:
-            self.open.hide()
-            self.infile.setText(self.editor_s.get_text())
 
     def toggle_gral_group(self):
         ' toggle on or off the checkboxes '
