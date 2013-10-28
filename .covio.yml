@@ -1,0 +1,7 @@
+# 2013-10-27T08:48:14 by juan .covio.yml Continuous Integration by Ninja-IDE
+violations:
+    pep8: pep8 . --exclude="*migrations*,*settings*,*components*,*docs*"
+    sloccount: sloccount .
+    pip_review:
+        command: pip-review
+        nofail: true
