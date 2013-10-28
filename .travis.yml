@@ -1,0 +1,10 @@
+# 2013-10-27T08:48:14 by juan .travis.yml Continuous Integration by Ninja-IDE
+language: python
+python:
+    - 2.7
+before_install: sudo apt-get update -qq ; sudo apt-get install -qq sloccount ; pip install pep8 pip-tools coviolations_app coverage --use-mirrors --quiet
+before_script: rm --recursive --force *.pyc
+script: true
+after_success: covio
+after_failure: covio  # runs when failed
+cache: apt
